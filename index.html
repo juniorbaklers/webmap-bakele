@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Carte Webmapping Bakele - Clustering Final</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css" />
+  <script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { margin: 0; font-family: Arial, sans-serif; overflow: hidden; }
+    #map { height: calc(100vh - 100px); width: 100%; }
+    #bandeau { height: 50px; background-color: #09efef; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; }
+    #graphique { height: 50px; }
+    #control-container { position: absolute; top: 140px; right: 10px; z-index: 1000; }
+    #toggleButton { padding: 8px 12px; background: #09efef; color: white; border: none; border-radius: 5px; font-size: 14px; }
+    .legend { background: white; padding: 6px; font-size: 14px; border-radius: 5px; line-height: 18px; }
+  </style>
+</head>
+<body>
+<div id="bandeau">PROJET WEBMAPPING DE BAKELE - CLUSTERING</div>
+<div id="map"></div>
+<div id="graphique"><canvas id="marqueurChart"></canvas></div>
+<div id="control-container"><button id="toggleButton" onclick="toggleTheme()">🌙 Mode Sombre/Clair</button></div>
+<script>
+var map = L.map('map').setView([5.345317, -4.024429], 13);
+var osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(map);
+var darkMatter = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { attribution: '© CARTO' });
+var clusters = L.markerClusterGroup({ spiderfyOnMaxZoom: true, showCoverageOnHover: true, maxClusterRadius: 50 });
+var allMarkers = [];
+
+function addGeoJSON(url, color) {
+  fetch(url).then(response => response.json()).then(data => {
+    L.geoJSON(data, {
+      pointToLayer: (feature, latlng) => {
+        var marker = L.circleMarker(latlng, {
+          radius: 8,
+          fillColor: color,
+          color: "#000",
+          weight: 1,
+          opacity: 1,
+          fillOpacity: 0.8
+        }).bindPopup("Nom: " + (feature.properties.nom || "Inconnu"));
+        clusters.addLayer(marker);
+        allMarkers.push(marker);
+        updateChart();
+        return marker;
+      }
+    });
+  });
+}
+
+addGeoJSON('PA_60_65_ANS1.geojson', 'lightgreen');
+addGeoJSON('PA_65_70_ANS1.geojson', 'orange');
+addGeoJSON('PA_70_75_ANS1.geojson', 'red');
+addGeoJSON('PA_75_80_ANS1.geojson', 'blue');
+addGeoJSON('PA_80_ANS_PLUS1.geojson', 'yellow');
+
+map.addLayer(clusters);
+L.Control.geocoder({ defaultMarkGeocode: true, placeholder: "Rechercher une adresse" }).addTo(map);
+
+var ctx = document.getElementById('marqueurChart').getContext('2d');
+var marqueurChart = new Chart(ctx, {
+  type: 'bar',
+  data: { labels: ['Personnes âgées'], datasets: [{ label: 'Nombre visibles', data: [0], backgroundColor: 'orange' }] },
+  options: { scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+});
+
+function updateChart() {
+  var count = 0;
+  allMarkers.forEach(marker => { if (map.getBounds().contains(marker.getLatLng())) count++; });
+  marqueurChart.data.datasets[0].data = [count];
+  marqueurChart.update();
+}
+map.on('moveend', updateChart);
+
+var darkMode = false;
+function toggleTheme() {
+  if (darkMode) { map.removeLayer(darkMatter); osm.addTo(map); darkMode = false; }
+  else { map.removeLayer(osm); darkMatter.addTo(map); darkMode = true; }
+}
+
+var legend = L.control({position: 'bottomright'});
+legend.onAdd = function(map) {
+  var div = L.DomUtil.create('div', 'legend');
+  div.innerHTML += "<b>Légende des âges</b><br>";
+  div.innerHTML += '<i style="background:lightgreen;width:10px;height:10px;display:inline-block;"></i> [60-65[<br>';
+  div.innerHTML += '<i style="background:orange;width:10px;height:10px;display:inline-block;"></i> [65-70[<br>';
+  div.innerHTML += '<i style="background:red;width:10px;height:10px;display:inline-block;"></i> [70-75[<br>';
+  div.innerHTML += '<i style="background:blue;width:10px;height:10px;display:inline-block;"></i> [75-80[<br>';
+  div.innerHTML += '<i style="background:yellow;width:10px;height:10px;display:inline-block;"></i> 80 et plus<br>';
+  return div;
+};
+legend.addTo(map);
+</script>
+</body>
+</html>
