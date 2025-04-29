@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Carte Webmapping Bakele - Yopougon Clustering</title>
+
+  <!-- Feuilles de style et bibliothèques -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+  <script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    body { margin: 0; font-family: Arial, sans-serif; }
+    /* Bandeau bien centré même sur téléphone */
+    #bandeau {
+      width: 100%;
+      height: 50px;
+      background-color: #09efef;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      color: white;
+      font-weight: bold;
+      font-size: 18px;
+    }
+    #map { height: calc(100vh - 100px); width: 100%; }
+    #graphique { height: 50px; }
+    #control-container {
+      position: absolute;
+      top: 140px;
+      right: 10px;
+      z-index: 1000;
+    }
+    #toggleButton {
+      padding: 8px 12px;
+      background-color: #09efef;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    .legend {
+      background: white;
+      padding: 6px;
+      font-size: 14px;
+      border-radius: 5px;
+      line-height: 18px;
+    }
+  </style>
+</head>
+
+<body>
+
+<div id="bandeau">
+  PROJET WEBMAPPING DE BAKELE - Yopougon
+</div>
+
+<div id="map"></div>
+
+<div id="graphique">
+  <canvas id="marqueurChart"></canvas>
+</div>
+
+<div id="control-container">
+  <button id="toggleButton" onclick="toggleTheme()">🌙 Mode Sombre/Clair</button>
+</div>
+
+<script>
+// Initialiser la carte centrée sur Yopougon
+var map = L.map('map').setView([5.340, -4.070], 13);
+
+// Fonds de carte
+var osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(map);
+var darkMatter = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { attribution: '© CARTO' });
+
+// Charger la couche des quartiers de Yopougon
+fetch('yop_quartier.geojson')
+  .then(response => response.json())
+  .then(data => {
+    L.geoJSON(data, {
+      style: {
+        color: "#0033cc", 
+        weight: 2,
+        opacity: 1,
+        fillColor: "#cccccc",
+        fillOpacity: 0.2
+      }
+    }).addTo(map);
+  });
+
+// Groupe de clustering
+var clusters = L.markerClusterGroup({ spiderfyOnMaxZoom: true, showCoverageOnHover: true, maxClusterRadius: 50 });
+var allMarkers = [];
+
+// Fonction pour charger un GeoJSON et ajouter au cluster
+function addGeoJSON(url, color) {
+  fetch(url)
+    .then(response => response.json())
+    .then(data => {
+      L.geoJSON(data, {
+        pointToLayer: (feature, latlng) => {
+          var marker = L.circleMarker(latlng, {
+            radius: 8,
+            fillColor: color,
+            color: "#000",
+            weight: 1,
+            opacity: 1,
+            fillOpacity: 0.8
+          }).bindPopup("Nom: " + (feature.properties.nom || "Inconnu"));
+          clusters.addLayer(marker);
+          allMarkers.push(marker);
+          updateChart();
+          return marker;
+        }
+      });
+    });
+}
+
+// Charger les points par tranche d'âge
+addGeoJSON('PA_60_65_ANS1.geojson', 'lightgreen');
+addGeoJSON('PA_65_70_ANS1.geojson', 'orange');
+addGeoJSON('PA_70_75_ANS1.geojson', 'red');
+addGeoJSON('PA_75_80_ANS1.geojson', 'blue');
+addGeoJSON('PA_80_ANS_PLUS1.geojson', 'yellow');
+
+// Ajouter les clusters à la carte
+map.addLayer(clusters);
+
+// Ajouter la barre de recherche
+L.Control.geocoder({ defaultMarkGeocode: true, placeholder: "Rechercher une adresse" }).addTo(map);
+
+// Graphique dynamique
+var ctx = document.getElementById('marqueurChart').getContext('2d');
+var marqueurChart = new Chart(ctx, {
+  type: 'bar',
+  data: {
+    labels: ['Personnes âgées'],
+    datasets: [{
+      label: 'Nombre visibles',
+      data: [0],
+      backgroundColor: 'orange'
+    }]
+  },
+  options: {
+    scales: {
+      y: {
+        beginAtZero: true,
+        ticks: { stepSize: 1 }
+      }
+    }
+  }
+});
+
+// Mise à jour du graphique quand on bouge la carte
+function updateChart() {
+  var count = 0;
+  allMarkers.forEach(marker => {
+    if (map.getBounds().contains(marker.getLatLng())) {
+      count++;
+    }
+  });
+  marqueurChart.data.datasets[0].data = [count];
+  marqueurChart.update();
+}
+map.on('moveend', updateChart);
+
+// Bouton pour basculer sombre/clair
+var darkMode = false;
+function toggleTheme() {
+  if (darkMode) {
+    map.removeLayer(darkMatter);
+    osm.addTo(map);
+    darkMode = false;
+  } else {
+    map.removeLayer(osm);
+    darkMatter.addTo(map);
+    darkMode = true;
+  }
+}
+
+// Légende des couleurs
+var legend = L.control({ position: 'bottomright' });
+legend.onAdd = function(map) {
+  var div = L.DomUtil.create('div', 'legend');
+  div.innerHTML += "<b>Légende des âges</b><br>";
+  div.innerHTML += '<i style="background:lightgreen;width:10px;height:10px;display:inline-block;"></i> [60-65[<br>';
+  div.innerHTML += '<i style="background:orange;width:10px;height:10px;display:inline-block;"></i> [65-70[<br>';
+  div.innerHTML += '<i style="background:red;width:10px;height:10px;display:inline-block;"></i> [70-75[<br>';
+  div.innerHTML += '<i style="background:blue;width:10px;height:10px;display:inline-block;"></i> [75-80[<br>';
+  div.innerHTML += '<i style="background:yellow;width:10px;height:10px;display:inline-block;"></i> 80 et plus<br>';
+  return div;
+};
+legend.addTo(map);
+</script>
+
+</body>
+</html>
